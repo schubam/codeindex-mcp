@@ -48,6 +48,22 @@ cd codeindex-mcp
 make build
 ```
 
+## Configuration File
+
+Create a `.codeindex.json` in your project root to customize indexing:
+
+```json
+{
+  "exclude": ["cmd"],
+  "include": ["cmd/server"]
+}
+```
+
+- **exclude**: Paths to skip (relative to project root)
+- **include**: Exceptions to exclusions (takes priority over exclude)
+
+The example above skips all of `cmd/` except `cmd/server`.
+
 ## What It Does
 
 Provides a single tool `index_go_symbols` that extracts:

@@ -87,6 +87,12 @@ type ContentBlock struct {
 	Text string `json:"text"`
 }
 
+// Config types
+type Config struct {
+	Exclude []string `json:"exclude"`
+	Include []string `json:"include"`
+}
+
 // Index types (from codeindex)
 type Param struct {
 	Name string `json:"name"`
@@ -245,18 +251,76 @@ func sendError(id any, code int, message string) {
 	fmt.Println(string(data))
 }
 
+// loadConfig reads .codeindex.json from the given directory
+func loadConfig(root string) *Config {
+	configPath := filepath.Join(root, ".codeindex.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return &Config{}
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to parse .codeindex.json: %v\n", err)
+		return &Config{}
+	}
+	return &cfg
+}
+
+// shouldSkip checks if a path should be skipped based on config
+func shouldSkip(path string, root string, cfg *Config) bool {
+	relPath, err := filepath.Rel(root, path)
+	if err != nil {
+		relPath = path
+	}
+
+	// Check if explicitly included (takes priority)
+	for _, inc := range cfg.Include {
+		inc = filepath.Clean(inc)
+		if relPath == inc || strings.HasPrefix(relPath, inc+string(filepath.Separator)) {
+			return false
+		}
+	}
+
+	// Check if excluded
+	for _, exc := range cfg.Exclude {
+		exc = filepath.Clean(exc)
+		if relPath == exc || strings.HasPrefix(relPath, exc+string(filepath.Separator)) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Indexing logic (from codeindex)
 func indexDirectory(root string) (*Index, error) {
 	index := &Index{}
+	cfg := loadConfig(root)
 
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	// Convert root to absolute path for consistent matching
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		absRoot = root
+	}
+
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+
+		// Convert to absolute for matching
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			absPath = path
 		}
 
 		if d.IsDir() {
 			name := d.Name()
 			if strings.HasPrefix(name, ".") || name == "vendor" || name == "node_modules" {
+				return filepath.SkipDir
+			}
+			// Check config-based exclusions for directories
+			if shouldSkip(absPath, absRoot, cfg) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -267,6 +331,11 @@ func indexDirectory(root string) (*Index, error) {
 		}
 
 		if strings.HasSuffix(path, "_test.go") || strings.HasSuffix(path, ".pb.go") {
+			return nil
+		}
+
+		// Check config-based exclusions for files
+		if shouldSkip(absPath, absRoot, cfg) {
 			return nil
 		}
 
