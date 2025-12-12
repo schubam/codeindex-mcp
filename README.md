@@ -90,7 +90,7 @@ Returns JSON with matching top-level declarations organized by file.
 
 ### Example queries
 
-```json
+```js
 // Find exact function name
 {"name": "setupRoutes"}
 
