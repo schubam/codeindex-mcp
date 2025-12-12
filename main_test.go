@@ -265,3 +265,73 @@ func TestEmptyFilter(t *testing.T) {
 			len(filtered.Files), len(index.Files))
 	}
 }
+
+func TestShouldSkipWithIncludeUnderExclude(t *testing.T) {
+	cfg := &Config{
+		Exclude: []string{"cmd"},
+		Include: []string{"cmd/server"},
+	}
+
+	tests := []struct {
+		name        string
+		path        string
+		isDir       bool
+		wantSkip    bool
+		wantSkipDir bool
+	}{
+		{"cmd dir should descend", "cmd", true, true, false},           // descend but skip files
+		{"cmd/server should not skip", "cmd/server", true, false, false},
+		{"cmd/server/main.go should not skip", "cmd/server/main.go", false, false, false},
+		{"cmd/cli should skip entirely", "cmd/cli", true, true, true},
+		{"cmd/cli/main.go should skip", "cmd/cli/main.go", false, true, true},
+		{"internal should not skip", "internal", true, false, false},
+		{"internal/foo.go should not skip", "internal/foo.go", false, false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			skip, skipDir := shouldSkip(tt.path, ".", cfg, tt.isDir)
+			if skip != tt.wantSkip {
+				t.Errorf("shouldSkip(%q).skip = %v, want %v", tt.path, skip, tt.wantSkip)
+			}
+			if tt.isDir && skipDir != tt.wantSkipDir {
+				t.Errorf("shouldSkip(%q).skipDir = %v, want %v", tt.path, skipDir, tt.wantSkipDir)
+			}
+		})
+	}
+}
+
+func TestIndexesPrivateFunctions(t *testing.T) {
+	index, err := indexDirectory(".")
+	if err != nil {
+		t.Fatalf("failed to index: %v", err)
+	}
+
+	// Find private functions (lowercase first letter)
+	var privateFuncs []string
+	for _, file := range index.Files {
+		for _, fn := range file.Functions {
+			if len(fn.Name) > 0 && fn.Name[0] >= 'a' && fn.Name[0] <= 'z' {
+				privateFuncs = append(privateFuncs, fn.Name)
+			}
+		}
+	}
+
+	// We should find private functions like matchesFilter, sendResult, etc.
+	if len(privateFuncs) == 0 {
+		t.Error("expected to find private functions (lowercase)")
+	}
+
+	// Check for specific private functions we know exist
+	found := make(map[string]bool)
+	for _, fn := range privateFuncs {
+		found[fn] = true
+	}
+
+	expectedPrivate := []string{"matchesFilter", "sendResult", "sendError", "loadConfig", "shouldSkip"}
+	for _, name := range expectedPrivate {
+		if !found[name] {
+			t.Errorf("expected to find private function %q", name)
+		}
+	}
+}

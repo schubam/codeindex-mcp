@@ -364,7 +364,9 @@ func loadConfig(root string) *Config {
 }
 
 // shouldSkip checks if a path should be skipped based on config
-func shouldSkip(path string, root string, cfg *Config) bool {
+// For directories, returns (skip, skipEntirely) - skipEntirely means use SkipDir
+// For files, only the first return value matters
+func shouldSkip(path string, root string, cfg *Config, isDir bool) (skip bool, skipDir bool) {
 	relPath, err := filepath.Rel(root, path)
 	if err != nil {
 		relPath = path
@@ -374,7 +376,7 @@ func shouldSkip(path string, root string, cfg *Config) bool {
 	for _, inc := range cfg.Include {
 		inc = filepath.Clean(inc)
 		if relPath == inc || strings.HasPrefix(relPath, inc+string(filepath.Separator)) {
-			return false
+			return false, false
 		}
 	}
 
@@ -382,11 +384,22 @@ func shouldSkip(path string, root string, cfg *Config) bool {
 	for _, exc := range cfg.Exclude {
 		exc = filepath.Clean(exc)
 		if relPath == exc || strings.HasPrefix(relPath, exc+string(filepath.Separator)) {
-			return true
+			// For directories, check if any include is a child of this path
+			// If so, we need to descend into it (don't SkipDir)
+			if isDir {
+				for _, inc := range cfg.Include {
+					inc = filepath.Clean(inc)
+					if strings.HasPrefix(inc, relPath+string(filepath.Separator)) {
+						// An include is under this excluded dir, descend but skip files here
+						return true, false
+					}
+				}
+			}
+			return true, true
 		}
 	}
 
-	return false
+	return false, false
 }
 
 // Indexing logic (from codeindex)
@@ -418,7 +431,8 @@ func indexDirectory(root string) (*Index, error) {
 				return filepath.SkipDir
 			}
 			// Check config-based exclusions for directories
-			if shouldSkip(absPath, absRoot, cfg) {
+			_, skipDir := shouldSkip(absPath, absRoot, cfg, true)
+			if skipDir {
 				return filepath.SkipDir
 			}
 			return nil
@@ -433,7 +447,8 @@ func indexDirectory(root string) (*Index, error) {
 		}
 
 		// Check config-based exclusions for files
-		if shouldSkip(absPath, absRoot, cfg) {
+		skip, _ := shouldSkip(absPath, absRoot, cfg, false)
+		if skip {
 			return nil
 		}
 
