@@ -2,25 +2,50 @@
 
 A lightweight MCP server that gives LLM agents the ability to index Go symbols in your codebase. Drop it into any project to provide code navigation capabilities to Claude, Cursor, or other MCP-compatible tools.
 
-## Quick Start
+## Installation
 
 ```bash
-# Clone into your project (or add as submodule)
-git clone https://github.com/schubam/codeindex-mcp.git
-cd codeindex-mcp
-make build
+go install github.com/schubam/codeindex-mcp@latest
 ```
 
-Then add to your MCP client config (e.g., `~/.claude/claude_desktop_config.json`):
+Make sure `~/go/bin` is in your `PATH`.
+
+## Configuration
+
+### Claude Code
+
+Add to `~/.claude/settings.json`:
 
 ```json
 {
   "mcpServers": {
     "codeindex": {
-      "command": "/path/to/codeindex-mcp/codeindex-mcp"
+      "command": "codeindex-mcp"
     }
   }
 }
+```
+
+### Claude Desktop
+
+Add to `~/.claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "codeindex": {
+      "command": "codeindex-mcp"
+    }
+  }
+}
+```
+
+### Building from source
+
+```bash
+git clone https://github.com/schubam/codeindex-mcp.git
+cd codeindex-mcp
+make build
 ```
 
 ## What It Does
