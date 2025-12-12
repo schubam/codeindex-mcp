@@ -169,13 +169,25 @@ func handleRequest(req JSONRPCRequest) {
 			Tools: []Tool{
 				{
 					Name:        "index_go_symbols",
-					Description: "Index Go symbols (functions, structs, interfaces, constants, variables) in a directory. Returns JSON with all top-level declarations.",
+					Description: "Index Go symbols (functions, structs, interfaces, constants, variables) in a directory. Returns JSON with all top-level declarations. Use filter parameters to limit results.",
 					InputSchema: InputSchema{
 						Type: "object",
 						Properties: map[string]Property{
 							"directory": {
 								Type:        "string",
 								Description: "Path to the directory to index. Defaults to current working directory if not specified.",
+							},
+							"name": {
+								Type:        "string",
+								Description: "Filter by exact symbol name (e.g., 'setupRoutes').",
+							},
+							"name_contains": {
+								Type:        "string",
+								Description: "Filter symbols whose name contains this substring (e.g., 'LinkTo').",
+							},
+							"kind": {
+								Type:        "string",
+								Description: "Filter by symbol kind: 'function', 'struct', 'interface', 'constant', or 'variable'.",
 							},
 						},
 					},
@@ -197,7 +209,10 @@ func handleRequest(req JSONRPCRequest) {
 
 		// Parse arguments
 		var args struct {
-			Directory string `json:"directory"`
+			Directory    string `json:"directory"`
+			Name         string `json:"name"`
+			NameContains string `json:"name_contains"`
+			Kind         string `json:"kind"`
 		}
 		if len(params.Arguments) > 0 {
 			json.Unmarshal(params.Arguments, &args)
@@ -208,6 +223,9 @@ func handleRequest(req JSONRPCRequest) {
 
 		// Run indexer
 		index, err := indexDirectory(args.Directory)
+		if err == nil {
+			index = filterIndex(index, args.Name, args.NameContains, args.Kind)
+		}
 		if err != nil {
 			sendError(req.ID, -32000, err.Error())
 			return
@@ -249,6 +267,85 @@ func sendError(id any, code int, message string) {
 	}
 	data, _ := json.Marshal(resp)
 	fmt.Println(string(data))
+}
+
+// filterIndex filters the index based on query parameters
+func filterIndex(index *Index, name, nameContains, kind string) *Index {
+	if name == "" && nameContains == "" && kind == "" {
+		return index
+	}
+
+	filtered := &Index{}
+
+	for _, file := range index.Files {
+		fi := FileIndex{
+			Path:    file.Path,
+			Package: file.Package,
+		}
+
+		// Filter functions
+		if kind == "" || kind == "function" {
+			for _, fn := range file.Functions {
+				if matchesFilter(fn.Name, name, nameContains) {
+					fi.Functions = append(fi.Functions, fn)
+				}
+			}
+		}
+
+		// Filter structs
+		if kind == "" || kind == "struct" {
+			for _, s := range file.Structs {
+				if matchesFilter(s, name, nameContains) {
+					fi.Structs = append(fi.Structs, s)
+				}
+			}
+		}
+
+		// Filter interfaces
+		if kind == "" || kind == "interface" {
+			for _, i := range file.Interfaces {
+				if matchesFilter(i, name, nameContains) {
+					fi.Interfaces = append(fi.Interfaces, i)
+				}
+			}
+		}
+
+		// Filter constants
+		if kind == "" || kind == "constant" {
+			for _, c := range file.Constants {
+				if matchesFilter(c, name, nameContains) {
+					fi.Constants = append(fi.Constants, c)
+				}
+			}
+		}
+
+		// Filter variables
+		if kind == "" || kind == "variable" {
+			for _, v := range file.Variables {
+				if matchesFilter(v, name, nameContains) {
+					fi.Variables = append(fi.Variables, v)
+				}
+			}
+		}
+
+		// Only include file if it has matching symbols
+		if len(fi.Functions) > 0 || len(fi.Structs) > 0 || len(fi.Interfaces) > 0 ||
+			len(fi.Constants) > 0 || len(fi.Variables) > 0 {
+			filtered.Files = append(filtered.Files, fi)
+		}
+	}
+
+	return filtered
+}
+
+func matchesFilter(symbolName, exactName, contains string) bool {
+	if exactName != "" && symbolName != exactName {
+		return false
+	}
+	if contains != "" && !strings.Contains(symbolName, contains) {
+		return false
+	}
+	return true
 }
 
 // loadConfig reads .codeindex.json from the given directory
@@ -316,7 +413,8 @@ func indexDirectory(root string) (*Index, error) {
 
 		if d.IsDir() {
 			name := d.Name()
-			if strings.HasPrefix(name, ".") || name == "vendor" || name == "node_modules" {
+			// Skip hidden directories, but not the root if it's "."
+			if name != "." && (strings.HasPrefix(name, ".") || name == "vendor" || name == "node_modules") {
 				return filepath.SkipDir
 			}
 			// Check config-based exclusions for directories

@@ -82,8 +82,27 @@ This gives LLM agents a map of your codebase so they can navigate and understand
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `directory` | string | Path to index (defaults to cwd) |
+| `name` | string | Filter by exact symbol name (e.g., `setupRoutes`) |
+| `name_contains` | string | Filter symbols containing substring (e.g., `LinkTo`) |
+| `kind` | string | Filter by kind: `function`, `struct`, `interface`, `constant`, `variable` |
 
-Returns JSON with all top-level declarations organized by file.
+Returns JSON with matching top-level declarations organized by file.
+
+### Example queries
+
+```json
+// Find exact function name
+{"name": "setupRoutes"}
+
+// Find all symbols containing "Handler"
+{"name_contains": "Handler"}
+
+// Find all structs containing "Config"
+{"name_contains": "Config", "kind": "struct"}
+
+// Find all interfaces
+{"kind": "interface"}
+```
 
 ## Indexing Behavior
 
